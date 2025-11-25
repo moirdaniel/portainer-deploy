@@ -17,9 +17,8 @@ services:
       # Router HTTP que matchea el host
       - "traefik.http.routers.${APP_NAME}.entrypoints=web"
       - "traefik.http.routers.${APP_NAME}.rule=Host(`${APP_NAME}.ovh.moir.cl`)"
-      # Backend: puerto 9443, pero en modo HTTPS
-      - "traefik.http.services.${APP_NAME}.loadbalancer.server.port=9443"
-      - "traefik.http.services.${APP_NAME}.loadbalancer.server.scheme=https"
+      # Backend: usar el puerto HTTP interno de Portainer (9000)
+      - "traefik.http.services.${APP_NAME}.loadbalancer.server.port=9000"
 
 networks:
   proxy:
