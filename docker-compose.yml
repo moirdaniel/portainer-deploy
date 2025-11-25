@@ -14,6 +14,9 @@ services:
       - proxy
     labels:
       - "traefik.enable=true"
+      - "traefik.http.routers.${APP_NAME}.tls=true"
+      - "traefik.http.middlewares.${APP_NAME}-redirect.redirectscheme.scheme=https"
+      - "traefik.http.routers.${APP_NAME}.middlewares=${APP_NAME}-redirect"
       - "traefik.http.routers.${APP_NAME}.entrypoints=web"
       - 'traefik.http.routers.${APP_NAME}.rule=Host(`${APP_NAME}.ovh.moir.cl`)'
       - "traefik.http.services.${APP_NAME}.loadbalancer.server.port=9443"
