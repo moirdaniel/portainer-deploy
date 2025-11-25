@@ -1,0 +1,181 @@
+name: Deploy Proxy (Main)
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: OVH
+
+    steps:
+      # -----------------------------
+      # 1) Checkout del repositorio
+      # -----------------------------
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      # -----------------------------
+      # 2) Instalar Doppler CLI
+      # -----------------------------
+      - name: Install Doppler CLI
+        run: |
+          curl -Ls https://cli.doppler.com/install.sh | sudo sh
+
+      # -----------------------------
+      # 3) Cargar secrets con fallback
+      #    Doppler -> si falla -> GitHub
+      # -----------------------------
+      - name: Load secrets (Doppler → fallback GitHub)
+        id: load_secrets
+        env:
+          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
+
+          # GitHub Secrets (fallback)
+          GH_OVH_SSH_HOST: ${{ secrets.OVH_SSH_HOST }}
+          GH_OVH_SSH_USER: ${{ secrets.OVH_SSH_USER }}
+          GH_OVH_SSH_KEY: ${{ secrets.OVH_SSH_KEY }}
+          GH_TUNNEL_TOKEN: ${{ secrets.TUNNEL_TOKEN }}
+          GH_TZ: ${{ secrets.TZ }}
+
+          # GitHub Variables
+          GH_APP_NAME: ${{ vars.APP_NAME }}
+          GH_DOCKER_PATH: ${{ vars.DOCKER_PATH }}
+        run: |
+          set -e
+
+          echo "===> Intentando cargar secrets desde Doppler..."
+          if doppler secrets get OVH_SSH_HOST --plain > /dev/null 2>&1; then
+            echo "✔ Doppler OK. Cargando secrets..."
+
+            OVH_SSH_HOST=$(doppler secrets get OVH_SSH_HOST --plain)
+            OVH_SSH_USER=$(doppler secrets get OVH_SSH_USER --plain)
+            OVH_SSH_KEY=$(doppler secrets get OVH_SSH_KEY --plain)
+            TUNNEL_TOKEN=$(doppler secrets get TUNNEL_TOKEN --plain)
+            TZ=$(doppler secrets get TZ --plain)
+
+            SECRET_SOURCE="Doppler"
+          else
+            echo "⚠ Doppler falló o no responde. Usando secrets de GitHub..."
+
+            OVH_SSH_HOST="$GH_OVH_SSH_HOST"
+            OVH_SSH_USER="$GH_OVH_SSH_USER"
+            OVH_SSH_KEY="$GH_OVH_SSH_KEY"
+            TUNNEL_TOKEN="$GH_TUNNEL_TOKEN"
+            TZ="$GH_TZ"
+
+            SECRET_SOURCE="GitHub"
+          fi
+
+          # Validación fuerte de secretos críticos
+          echo "===> Validando secrets críticos..."
+          for VAR in OVH_SSH_HOST OVH_SSH_USER OVH_SSH_KEY TUNNEL_TOKEN TZ; do
+            if [ -z "$(eval echo \$$VAR)" ]; then
+              echo "❌ ERROR: Variable $VAR está vacía incluso después del fallback."
+              exit 1
+            fi
+          done
+
+          # Exportar a ambiente del job
+          {
+            echo "OVH_SSH_HOST=$OVH_SSH_HOST"
+            echo "OVH_SSH_USER=$OVH_SSH_USER"
+            echo "TUNNEL_TOKEN=$TUNNEL_TOKEN"
+            echo "TZ=$TZ"
+            echo "APP_NAME=$GH_APP_NAME"
+            echo "DOCKER_PATH=$GH_DOCKER_PATH"
+            echo "SECRET_SOURCE=$SECRET_SOURCE"
+          } >> $GITHUB_ENV
+
+          # Para la clave usamos el bloque multilinea correcto
+          {
+            echo "OVH_SSH_KEY<<EOF"
+            echo "$OVH_SSH_KEY"
+            echo "EOF"
+          } >> $GITHUB_ENV
+
+          echo ""
+          echo "=== Resumen de origen de secrets ==="
+          echo "Origen de secrets sensibles : $SECRET_SOURCE"
+          echo "APP_NAME      = $GH_APP_NAME"
+          echo "DOCKER_PATH   = $GH_DOCKER_PATH"
+          echo "OVH_SSH_HOST  = $OVH_SSH_HOST"
+          echo "OVH_SSH_USER  = $OVH_SSH_USER"
+          echo "TZ            = $TZ"
+          echo "===================================="
+
+      # -----------------------------
+      # 4) Deploy en OVH
+      # -----------------------------
+      - name: Deploy to OVH Server
+        run: |
+          set -e
+
+          if [ -z "$APP_NAME" ] || [ -z "$DOCKER_PATH" ]; then
+            echo "❌ ERROR: APP_NAME o DOCKER_PATH no están configurados como GitHub Variables."
+            exit 1
+          fi
+
+          echo "===> Preparando clave SSH..."
+          mkdir -p ~/.ssh
+          printf '%s\n' "$OVH_SSH_KEY" > ~/.ssh/id_ovh_github
+          chmod 600 ~/.ssh/id_ovh_github
+
+          {
+            echo "Host *"
+            echo "  StrictHostKeyChecking no"
+          } >> ~/.ssh/config
+
+          echo ""
+          echo "===> Creando carpeta de deploy en $OVH_SSH_HOST:$DOCKER_PATH"
+          ssh -i ~/.ssh/id_ovh_github "$OVH_SSH_USER@$OVH_SSH_HOST" "
+            set -e
+            sudo mkdir -p '$DOCKER_PATH';
+            sudo chown -R \$(whoami):\$(whoami) '$DOCKER_PATH';
+          "
+
+          echo ""
+          echo "===> Sincronizando código (rsync)..."
+          rsync -avz \
+            --delete \
+            --exclude '.git' \
+            --exclude '.github' \
+            --exclude '.gitignore' \
+            -e "ssh -i ~/.ssh/id_ovh_github" \
+            ./ "$OVH_SSH_USER@$OVH_SSH_HOST:$DOCKER_PATH/"
+
+          echo ""
+          echo "===> Ejecutando Docker en el servidor..."
+          ssh -i ~/.ssh/id_ovh_github "$OVH_SSH_USER@$OVH_SSH_HOST" bash << EOF_REMOTE
+          set -e
+
+          cd "$DOCKER_PATH"
+
+          # Crear .env remoto para docker-compose
+          echo "TZ=$TZ" > .env
+          echo "TUNNEL_TOKEN=$TUNNEL_TOKEN" >> .env
+          echo "APP_NAME=$APP_NAME" >> .env
+          
+          echo "[Antes del deploy]"
+          docker ps --format 'table {{.Names}}\t{{.Image}}\t{{.Status}}' | grep proxy || echo "(no containers proxy*)"
+
+          if [ ! -f docker-compose.yml ] && [ ! -f docker-compose.yaml ]; then
+            echo "❌ ERROR: No se encontró docker-compose.yml en $DOCKER_PATH"
+            ls -la
+            exit 1
+          fi
+
+          echo ""
+          echo "===> docker compose pull"
+          docker compose pull
+
+          echo ""
+          echo "===> docker compose up -d --force-recreate --remove-orphans"
+          docker compose up -d --force-recreate --remove-orphans
+
+          echo ""
+          echo "[Después del deploy]"
+          docker ps --format 'table {{.Names}}\t{{.Image}}\t{{.Status}}' | grep proxy || echo "(no containers proxy*)"
+          EOF_REMOTE
