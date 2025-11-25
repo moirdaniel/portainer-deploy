@@ -14,11 +14,14 @@ services:
       - proxy
     labels:
       - "traefik.enable=true"
-      # Router HTTP que matchea el host
+
+      # Router HTTP (Cloudflare hace HTTPS en el edge)
       - "traefik.http.routers.${APP_NAME}.entrypoints=web"
       - "traefik.http.routers.${APP_NAME}.rule=Host(`${APP_NAME}.ovh.moir.cl`)"
-      # Backend: usar el puerto HTTP interno de Portainer (9000)
-      - "traefik.http.services.${APP_NAME}.loadbalancer.server.port=9000"
+
+      # Portainer escucha en 9443 con HTTPS, se lo indicamos a Traefik
+      - "traefik.http.services.${APP_NAME}.loadbalancer.server.port=9443"
+      - "traefik.http.services.${APP_NAME}.loadbalancer.server.scheme=https"
 
 networks:
   proxy:
