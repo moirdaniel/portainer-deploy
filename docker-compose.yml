@@ -14,12 +14,12 @@ services:
       - proxy
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.${APP_NAME}.tls=true"
-      - "traefik.http.middlewares.${APP_NAME}-redirect.redirectscheme.scheme=https"
-      - "traefik.http.routers.${APP_NAME}.middlewares=${APP_NAME}-redirect"
+      # Router HTTP que matchea el host
       - "traefik.http.routers.${APP_NAME}.entrypoints=web"
-      - 'traefik.http.routers.${APP_NAME}.rule=Host(`${APP_NAME}.ovh.moir.cl`)'
+      - "traefik.http.routers.${APP_NAME}.rule=Host(`${APP_NAME}.ovh.moir.cl`)"
+      # Backend: puerto 9443, pero en modo HTTPS
       - "traefik.http.services.${APP_NAME}.loadbalancer.server.port=9443"
+      - "traefik.http.services.${APP_NAME}.loadbalancer.server.scheme=https"
 
 networks:
   proxy:
