@@ -6,6 +6,7 @@ services:
     container_name: portainer
     restart: unless-stopped
     environment:
+      # Zona horaria, viene desde Doppler / GitHub Actions (.env)
       - TZ=${TZ}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
@@ -15,13 +16,18 @@ services:
     labels:
       - "traefik.enable=true"
 
-      # Router HTTP (Cloudflare hace HTTPS en el edge)
+      # Router HTTP en Traefik.
+      # EntryPoint: web (puerto 80 en el contenedor traefik)
       - "traefik.http.routers.${APP_NAME}.entrypoints=web"
-      - "traefik.http.routers.${APP_NAME}.rule=Host(`${APP_NAME}.ovh.moir.cl`)"
 
-      # Portainer escucha en 9443 con HTTPS, se lo indicamos a Traefik
-      - "traefik.http.services.${APP_NAME}.loadbalancer.server.port=9443"
-      - "traefik.http.services.${APP_NAME}.loadbalancer.server.scheme=https"
+      # Regla de host completamente parametrizada:
+      # APP_HOST se define en el .env generado por el pipeline:
+      #   APP_HOST=portainer-ovh.moir.cl
+      - "traefik.http.routers.${APP_NAME}.rule=Host(`${APP_HOST}`)"
+
+      # Backend: Portainer expone HTTP en el puerto 9000 (dentro del contenedor).
+      # No usamos TLS aquí; el HTTPS lo maneja Cloudflare hacia el cliente.
+      - "traefik.http.services.${APP_NAME}.loadbalancer.server.port=9000"
 
 networks:
   proxy:
