@@ -14,14 +14,15 @@ services:
       - proxy
     labels:
       - "traefik.enable=true"
-      # router: nombre dinámico usando APP_NAME (ej: infra-portainer)
       - "traefik.http.routers.${APP_NAME}.entrypoints=web"
       - 'traefik.http.routers.${APP_NAME}.rule=Host(`${APP_NAME}.ovh.moir.cl`)'
-      # servicio apunta al puerto interno de Portainer (9443 si usas HTTPS nativo)
       - "traefik.http.services.${APP_NAME}.loadbalancer.server.port=9443"
-      # si usas TLS por Traefik:
-      # - "traefik.http.routers.${APP_NAME}.tls=true"
-      # - "traefik.http.routers.${APP_NAME}.tls.certresolver=le"
+    healthcheck:
+      test: ["CMD", "curl", "-kfsS", "https://localhost:9443/api/status"] # chequeo de API interna
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
 
 networks:
   proxy:
