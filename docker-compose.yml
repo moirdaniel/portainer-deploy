@@ -6,39 +6,25 @@ services:
     container_name: portainer
     restart: unless-stopped
     environment:
-      # Zona horaria, viene desde Doppler / GitHub Actions (.env)
       - TZ=${TZ}
-      # Orígenes confiables para el CSRF de Portainer
-      # Asegúrate que APP_HOST en tu .env sea EXACTAMENTE el dominio que usas.
-      # Ej: APP_HOST=app-ovh-portainer.moir.cl
       - PORTAINER_TRUSTED_ORIGINS=https://${APP_HOST}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      - ./data:/data
-    # ports:
-    #   - "9000:9000"
+      # Volumen nombrado en vez de bind ./data
+      - portainer_data:/data
     networks:
       - proxy
     labels:
       - "traefik.enable=true"
-
-      # Router HTTP en Traefik.
-      # EntryPoint: web (puerto 80 en el contenedor traefik)
       - "traefik.http.routers.${APP_NAME}.entrypoints=web"
-
-      # Regla de host completamente parametrizada:
-      # APP_HOST se define en el .env generado por el pipeline:
-      #   APP_HOST=app-ovh-portainer.moir.cl
       - "traefik.http.routers.${APP_NAME}.rule=Host(`${APP_HOST}`)"
-
-      # Backend: Portainer expone HTTP en el puerto 9000 (dentro del contenedor).
-      # No usamos TLS aquí; el HTTPS lo maneja Cloudflare hacia el cliente.
       - "traefik.http.services.${APP_NAME}.loadbalancer.server.port=9000"
-
-      # Middleware para forzar que Portainer vea X-Forwarded-Proto=https
       - "traefik.http.middlewares.${APP_NAME}-force-https.headers.customrequestheaders.X-Forwarded-Proto=https"
       - "traefik.http.routers.${APP_NAME}.middlewares=${APP_NAME}-force-https"
 
 networks:
   proxy:
     external: true
+
+volumes:
+  portainer_data:
