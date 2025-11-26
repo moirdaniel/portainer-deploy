@@ -43,6 +43,7 @@ jobs:
           # GitHub Variables
           GH_APP_NAME: ${{ vars.APP_NAME }}
           GH_DOCKER_PATH: ${{ vars.DOCKER_PATH }}
+          APP_HOST:   ${{ vars.APP_HOST }}
         run: |
           set -e
 
@@ -104,6 +105,7 @@ jobs:
           echo "OVH_SSH_HOST  = $OVH_SSH_HOST"
           echo "OVH_SSH_USER  = $OVH_SSH_USER"
           echo "TZ            = $TZ"
+          echo "APP_HOST      = $APP_HOST"
           echo "===================================="
 
       # -----------------------------
@@ -157,7 +159,8 @@ jobs:
           echo "TZ=$TZ" > .env
           echo "TUNNEL_TOKEN=$TUNNEL_TOKEN" >> .env
           echo "APP_NAME=$APP_NAME" >> .env
-          
+          echo "APP_HOST=$APP_HOST" >> .env
+
           echo "[Antes del deploy]"
           docker ps --format 'table {{.Names}}\t{{.Image}}\t{{.Status}}' | grep proxy || echo "(no containers proxy*)"
 
