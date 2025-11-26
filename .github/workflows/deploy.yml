@@ -34,16 +34,16 @@ jobs:
           DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
 
           # GitHub Secrets (fallback)
-          GH_OVH_SSH_HOST: ${{ secrets.OVH_SSH_HOST }}
-          GH_OVH_SSH_USER: ${{ secrets.OVH_SSH_USER }}
-          GH_OVH_SSH_KEY: ${{ secrets.OVH_SSH_KEY }}
-          GH_TUNNEL_TOKEN: ${{ secrets.TUNNEL_TOKEN }}
-          GH_TZ: ${{ secrets.TZ }}
+          GH_OVH_SSH_HOST:  ${{ secrets.OVH_SSH_HOST }}
+          GH_OVH_SSH_USER:  ${{ secrets.OVH_SSH_USER }}
+          GH_OVH_SSH_KEY:   ${{ secrets.OVH_SSH_KEY }}
+          GH_TUNNEL_TOKEN:  ${{ secrets.TUNNEL_TOKEN }}
+          GH_TZ:            ${{ secrets.TZ }}
 
           # GitHub Variables
-          GH_APP_NAME: ${{ vars.APP_NAME }}
-          GH_DOCKER_PATH: ${{ vars.DOCKER_PATH }}
-          APP_HOST:   ${{ vars.APP_HOST }}
+          GH_APP_NAME:      ${{ vars.APP_NAME }}
+          GH_DOCKER_PATH:   ${{ vars.DOCKER_PATH }}
+          GH_APP_HOST:      ${{ vars.APP_HOST }}   # <--- importante
         run: |
           set -e
 
@@ -79,7 +79,17 @@ jobs:
             fi
           done
 
-          # Exportar a ambiente del job
+          # Validación de variables de app
+          if [ -z "$GH_APP_NAME" ] || [ -z "$GH_DOCKER_PATH" ]; then
+            echo "❌ ERROR: GH_APP_NAME o GH_DOCKER_PATH vienen vacíos desde GitHub Variables."
+            exit 1
+          fi
+
+          if [ -z "$GH_APP_HOST" ]; then
+            echo "⚠ AVISO: GH_APP_HOST está vacío. El host Traefik quedará sin regla de Host()."
+          fi
+
+          # Exportar a ambiente del job (incluimos APP_HOST)
           {
             echo "OVH_SSH_HOST=$OVH_SSH_HOST"
             echo "OVH_SSH_USER=$OVH_SSH_USER"
@@ -87,6 +97,7 @@ jobs:
             echo "TZ=$TZ"
             echo "APP_NAME=$GH_APP_NAME"
             echo "DOCKER_PATH=$GH_DOCKER_PATH"
+            echo "APP_HOST=$GH_APP_HOST"
             echo "SECRET_SOURCE=$SECRET_SOURCE"
           } >> $GITHUB_ENV
 
@@ -102,10 +113,10 @@ jobs:
           echo "Origen de secrets sensibles : $SECRET_SOURCE"
           echo "APP_NAME      = $GH_APP_NAME"
           echo "DOCKER_PATH   = $GH_DOCKER_PATH"
+          echo "APP_HOST      = $GH_APP_HOST"
           echo "OVH_SSH_HOST  = $OVH_SSH_HOST"
           echo "OVH_SSH_USER  = $OVH_SSH_USER"
           echo "TZ            = $TZ"
-          echo "APP_HOST      = $APP_HOST"
           echo "===================================="
 
       # -----------------------------
